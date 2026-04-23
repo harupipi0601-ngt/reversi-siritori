@@ -117,7 +117,7 @@ function init(){
     }
   }
 
-  ["あ","い","う","え"].forEach((ch,i)=>{
+  ["し","り","と","り"].forEach((ch,i)=>{
     setCell(2+(i%2),2+Math.floor(i/2),ch);
   });
 
@@ -255,10 +255,20 @@ function approve(){
 
   const input=pendingWord;
 
-  selected.forEach((p,i)=>{
-    if(!board[p.y][p.x]){
-      setCell(p.x,p.y,input[i]);
+  let inputIndex = 0;
+
+  selected.forEach((p)=>{
+    if(board[p.y][p.x]){
+      // 既存文字 → 入力と一致してるか確認
+      if(board[p.y][p.x] !== input[inputIndex]){
+        alert("文字が一致していない！");
+        return;
+      }
+    } else {
+      // 新規マスにだけ文字を置く
+      setCell(p.x,p.y,input[inputIndex]);
     }
+    inputIndex++;
   });
 
   usedWords.push(input);
