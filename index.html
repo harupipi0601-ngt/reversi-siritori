@@ -98,7 +98,7 @@ let usedWords=[];
 let pendingWord="";
 let time=60,timer;
 let isPaused=false;
-let direction=null; // ←直線用
+let direction=null;
 
 // ===== 初期化 =====
 function init(){
@@ -136,7 +136,21 @@ function setCell(x,y,c){
   el.classList.add("filled");
 }
 
-// ===== クリック（直線＋斜め対応）=====
+// ===== 方向再計算 =====
+function updateDirection(){
+  if(selected.length < 2){
+    direction = null;
+    return;
+  }
+  const a = selected[selected.length-2];
+  const b = selected[selected.length-1];
+  direction = {
+    dx: Math.sign(b.x - a.x),
+    dy: Math.sign(b.y - a.y)
+  };
+}
+
+// ===== クリック処理 =====
 function clickCell(x,y){
 
   // 戻る
@@ -146,34 +160,36 @@ function clickCell(x,y){
       const p=selected.pop();
       getCell(p.x,p.y).classList.remove("selected");
     }
+    updateDirection();
     return;
   }
 
-  if(selected.length===0){
+  // 開始位置固定
+  if(selected.length === 0){
     if(lastPos){
-      if(Math.abs(lastPos.x-x)>1||Math.abs(lastPos.y-y)>1){
-        alert("前の終点の隣から！");
+      if(x !== lastPos.x || y !== lastPos.y){
+        alert("開始は前回の終点から！");
         return;
       }
     }
-  } else {
-    let prev=selected[selected.length-1];
-    let dx=x-prev.x;
-    let dy=y-prev.y;
+  }
 
-    if(Math.abs(dx)>1||Math.abs(dy)>1){
+  // 2マス目以降
+  else {
+    let prev = selected[selected.length-1];
+    let dx = x - prev.x;
+    let dy = y - prev.y;
+
+    if(Math.abs(dx)>1 || Math.abs(dy)>1){
       alert("隣接のみ！");
       return;
     }
 
-    // 正規化（8方向）
-    dx=Math.sign(dx);
-    dy=Math.sign(dy);
+    dx = Math.sign(dx);
+    dy = Math.sign(dy);
 
-    if(!direction){
-      direction={dx,dy};
-    }else{
-      if(direction.dx!==dx||direction.dy!==dy){
+    if(direction){
+      if(direction.dx !== dx || direction.dy !== dy){
         alert("一直線のみ！（斜めOK）");
         return;
       }
@@ -182,6 +198,8 @@ function clickCell(x,y){
 
   selected.push({x,y});
   getCell(x,y).classList.add("selected");
+
+  updateDirection();
 }
 
 // ===== キャンセル =====
@@ -189,6 +207,7 @@ function undo(){
   if(selected.length===0) return;
   const last=selected.pop();
   getCell(last.x,last.y).classList.remove("selected");
+  updateDirection();
 }
 
 function clearSelection(){
