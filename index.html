@@ -219,7 +219,10 @@ function clearSelection(){
 // ===== 提出 =====
 function submitWord(){
   const input=document.getElementById("wordInput").value.trim();
-  if(input.length<2){ alert("2文字以上"); return; }
+  if(input.length < selected.length){
+    alert("文字数が足りない！");
+    return;
+  }
 
   if(usedWords.includes(input)){
     alert("使用済み");
@@ -231,16 +234,21 @@ function submitWord(){
     return;
   }
 
-  const pathStr=selected.map(p=>board[p.y][p.x]||"").join("");
-  for(let i=0;i<pathStr.length;i++){
-    if(pathStr[i] && pathStr[i]!==input[i]){
-      alert("盤面と違う！");
-      return;
+  let inputIndex = 0;
+
+  for(let p of selected){
+    if(board[p.y][p.x]){
+      if(board[p.y][p.x] !== input[inputIndex]){
+        alert("途中の文字が盤面と一致してない！");
+        return;
+      }
     }
+    inputIndex++;
   }
 
-  if(selected.every(p=>board[p.y][p.x]!=="")){
-    alert("新規マス必要！");
+  // 新規マスがあるかチェック
+  if(selected.every(p=>board[p.y][p.x] !== "")){
+    alert("新しい文字を最低1つ置く必要あり！");
     return;
   }
 
@@ -254,22 +262,14 @@ function approve(){
   isPaused=false;
 
   const input=pendingWord;
-
   let inputIndex = 0;
 
-  selected.forEach((p)=>{
-    if(board[p.y][p.x]){
-      // 既存文字 → 入力と一致してるか確認
-      if(board[p.y][p.x] !== input[inputIndex]){
-        alert("文字が一致していない！");
-        return;
-      }
-    } else {
-      // 新規マスにだけ文字を置く
+  for(let p of selected){
+    if(!board[p.y][p.x]){
       setCell(p.x,p.y,input[inputIndex]);
     }
     inputIndex++;
-  });
+  }
 
   usedWords.push(input);
   lastChar=input[input.length-1];
