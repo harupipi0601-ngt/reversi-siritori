@@ -13,8 +13,6 @@ body {
   color:white;
 }
 
-h1 { margin:10px; }
-
 #board {
   display:grid;
   grid-template-columns:repeat(6,60px);
@@ -40,13 +38,9 @@ h1 { margin:10px; }
   transition:0.2s;
 }
 
-.cell:hover {
-  transform:scale(1.1);
-  background:#3a3a5a;
-}
-
+.cell:hover { transform:scale(1.1); }
 .selected {
-  background:#42a5f5 !important;
+  background:#42a5f5;
   box-shadow:0 0 10px #42a5f5;
 }
 
@@ -55,47 +49,15 @@ h1 { margin:10px; }
   80%{transform:scale(1.2);}
   100%{transform:scale(1);}
 }
+.filled { animation:pop 0.2s; }
 
-.filled {
-  animation:pop 0.2s ease;
-}
+#timer { font-size:24px; }
+.danger { color:red; animation:blink 1s infinite; }
+@keyframes blink { 50%{opacity:0.3;} }
 
-#panel {
-  margin-top:10px;
-}
-
-input {
-  padding:8px;
-  font-size:16px;
-  width:200px;
-}
-
-button {
-  padding:8px 16px;
-  font-size:16px;
-  cursor:pointer;
-  border:none;
-  border-radius:6px;
-}
-
-#timer {
-  font-size:24px;
-  font-weight:bold;
-}
-
-.danger {
-  color:red;
-  animation:blink 1s infinite;
-}
-
-@keyframes blink {
-  50%{opacity:0.3;}
-}
-
-#judge {
-  margin-top:10px;
-  display:none;
-}
+#judge { display:none; margin-top:10px; }
+button { padding:6px 12px; margin:3px; cursor:pointer; }
+input { padding:6px; }
 </style>
 </head>
 <body>
@@ -104,10 +66,10 @@ button {
 
 <div id="board"></div>
 
-<div id="panel">
-  <input id="wordInput" placeholder="単語入力">
-  <button onclick="submitWord()">決定</button>
-</div>
+<input id="wordInput">
+<button onclick="submitWord()">決定</button>
+<button onclick="undo()">1マス戻る</button>
+<button onclick="clearSelection()">全消し</button>
 
 <div id="judge">
   <button onclick="approve()">OK</button>
@@ -117,17 +79,15 @@ button {
 <p id="turn"></p>
 <p id="timer"></p>
 
-<audio id="clickSound" src="https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3"></audio>
-
 <script>
 const SIZE=6;
 let board=[],selected=[];
 let currentPlayer=1;
 let lastChar="";
 let lastPos=null;
-let time=60,timer;
 let usedWords=[];
 let pendingWord="";
+let time=60,timer;
 
 // ===== 初期化 =====
 function init(){
@@ -147,8 +107,7 @@ function init(){
   }
 
   ["あ","い","う","え"].forEach((ch,i)=>{
-    let x=2+(i%2), y=2+Math.floor(i/2);
-    setCell(x,y,ch);
+    setCell(2+(i%2),2+Math.floor(i/2),ch);
   });
 
   updateTurn();
@@ -166,12 +125,21 @@ function setCell(x,y,c){
   el.classList.add("filled");
 }
 
-// ===== クリック =====
+// ===== クリック（改良版）=====
 function clickCell(x,y){
 
-  document.getElementById("clickSound").play();
+  // クリックで戻る
+  const idx = selected.findIndex(p=>p.x===x&&p.y===y);
+  if(idx !== -1){
+    for(let i=selected.length-1;i>=idx;i--){
+      const p=selected.pop();
+      getCell(p.x,p.y).classList.remove("selected");
+    }
+    return;
+  }
 
   if(selected.length===0){
+    // 初手は自由、2手目以降は制限
     if(lastPos){
       if(Math.abs(lastPos.x-x)>1||Math.abs(lastPos.y-y)>1){
         alert("前の終点の隣から！");
@@ -186,15 +154,24 @@ function clickCell(x,y){
     }
   }
 
-  if(selected.some(p=>p.x===x&&p.y===y)) return;
-
   selected.push({x,y});
   getCell(x,y).classList.add("selected");
 }
 
+// ===== キャンセル =====
+function undo(){
+  if(selected.length===0) return;
+  const last=selected.pop();
+  getCell(last.x,last.y).classList.remove("selected");
+}
+
+function clearSelection(){
+  selected.forEach(p=>getCell(p.x,p.y).classList.remove("selected"));
+  selected=[];
+}
+
 // ===== 提出 =====
 function submitWord(){
-
   const input=document.getElementById("wordInput").value.trim();
   if(input.length<2){ alert("2文字以上"); return; }
 
@@ -225,7 +202,7 @@ function submitWord(){
   document.getElementById("judge").style.display="block";
 }
 
-// ===== OK =====
+// ===== 判定 =====
 function approve(){
   const input=pendingWord;
 
@@ -244,7 +221,6 @@ function approve(){
   nextTurn();
 }
 
-// ===== NG =====
 function reject(){
   alert("NG！負け！");
   document.getElementById("judge").style.display="none";
@@ -271,9 +247,7 @@ function startTimer(){
     const t=document.getElementById("timer");
     t.textContent="残り："+time;
 
-    if(time<=10){
-      t.classList.add("danger");
-    }
+    if(time<=10) t.classList.add("danger");
 
     if(time<=0){
       alert("時間切れ！プレイヤー"+currentPlayer+"の負け");
