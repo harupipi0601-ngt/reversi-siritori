@@ -56,6 +56,291 @@ body {
 @keyframes blink { 50%{opacity:0.3;} }
 
 #judge { display:none; margin-top:10px; }
+
+button {
+  padding:6px 12px;
+  margin:3px;
+  cursor:pointer;
+  border:none;
+  border-radius:6px;
+}
+
+input { padding:6px; }
+</style>
+</head>
+<body>
+
+<h1>しりとりボード</h1>
+
+<div id="board"></div>
+
+<input id="wordInput">
+<button onclick="submitWord()">決定</button>
+<button onclick="undo()">1マス戻る</button>
+<button onclick="clearSelection()">全消し</button>
+
+<div id="judge">
+  <button onclick="approve()">OK</button>
+  <button onclick="reject()">NG</button>
+</div>
+
+<p id="turn"></p>
+<p id="timer"></p>
+
+<script>
+const SIZE=6;
+let board=[],selected=[];
+let currentPlayer=1;
+let lastChar="";
+let lastPos=null;
+let usedWords=[];
+let pendingWord="";
+let time=60,timer;
+let isPaused=false;
+
+// ===== 初期化 =====
+function init(){
+  const b=document.getElementById("board");
+  b.innerHTML="";
+  board=[];
+
+  for(let y=0;y<SIZE;y++){
+    board[y]=[];
+    for(let x=0;x<SIZE;x++){
+      board[y][x]="";
+      const c=document.createElement("div");
+      c.className="cell";
+      c.onclick=()=>clickCell(x,y);
+      b.appendChild(c);
+    }
+  }
+
+  ["あ","い","う","え"].forEach((ch,i)=>{
+    setCell(2+(i%2),2+Math.floor(i/2),ch);
+  });
+
+  updateTurn();
+  resetTimer();
+}
+
+function getCell(x,y){
+  return document.getElementsByClassName("cell")[y*SIZE+x];
+}
+
+function setCell(x,y,c){
+  board[y][x]=c;
+  const el=getCell(x,y);
+  el.textContent=c;
+  el.classList.add("filled");
+}
+
+// ===== クリック（戻る対応）=====
+function clickCell(x,y){
+
+  const idx = selected.findIndex(p=>p.x===x&&p.y===y);
+  if(idx !== -1){
+    for(let i=selected.length-1;i>=idx;i--){
+      const p=selected.pop();
+      getCell(p.x,p.y).classList.remove("selected");
+    }
+    return;
+  }
+
+  if(selected.length===0){
+    if(lastPos){
+      if(Math.abs(lastPos.x-x)>1||Math.abs(lastPos.y-y)>1){
+        alert("前の終点の隣から！");
+        return;
+      }
+    }
+  }else{
+    let p=selected[selected.length-1];
+    if(Math.abs(p.x-x)>1||Math.abs(p.y-y)>1){
+      alert("隣接のみ！");
+      return;
+    }
+  }
+
+  selected.push({x,y});
+  getCell(x,y).classList.add("selected");
+}
+
+// ===== キャンセル =====
+function undo(){
+  if(selected.length===0) return;
+  const last=selected.pop();
+  getCell(last.x,last.y).classList.remove("selected");
+}
+
+function clearSelection(){
+  selected.forEach(p=>getCell(p.x,p.y).classList.remove("selected"));
+  selected=[];
+}
+
+// ===== 提出 =====
+function submitWord(){
+  const input=document.getElementById("wordInput").value.trim();
+  if(input.length<2){ alert("2文字以上"); return; }
+
+  if(usedWords.includes(input)){
+    alert("使用済み");
+    return;
+  }
+
+  if(lastChar && input[0]!==lastChar){
+    alert("しりとりになってない");
+    return;
+  }
+
+  const pathStr=selected.map(p=>board[p.y][p.x]||"").join("");
+  for(let i=0;i<pathStr.length;i++){
+    if(pathStr[i] && pathStr[i]!==input[i]){
+      alert("盤面と違う！");
+      return;
+    }
+  }
+
+  if(selected.every(p=>board[p.y][p.x]!=="")){
+    alert("新規マス必要！");
+    return;
+  }
+
+  pendingWord=input;
+  isPaused=true; // ← タイマー停止
+  document.getElementById("judge").style.display="block";
+}
+
+// ===== 判定 =====
+function approve(){
+  isPaused=false;
+
+  const input=pendingWord;
+
+  selected.forEach((p,i)=>{
+    if(!board[p.y][p.x]){
+      setCell(p.x,p.y,input[i]);
+    }
+  });
+
+  usedWords.push(input);
+  lastChar=input[input.length-1];
+  lastPos=selected[selected.length-1];
+
+  document.getElementById("judge").style.display="none";
+
+  nextTurn();
+}
+
+function reject(){
+  isPaused=false;
+  alert("NG！負け！");
+  document.getElementById("judge").style.display="none";
+}
+
+// ===== ターン =====
+function nextTurn(){
+  selected.forEach(p=>getCell(p.x,p.y).classList.remove("selected"));
+  selected=[];
+  currentPlayer=currentPlayer===1?2:1;
+  updateTurn();
+  resetTimer();
+}
+
+function updateTurn(){
+  document.getElementById("turn").textContent=
+    "プレイヤー"+currentPlayer+"のターン";
+}
+
+// ===== タイマー =====
+function startTimer(){
+  timer=setInterval(()=>{
+    if(isPaused){
+      document.getElementById("timer").textContent="判定中...";
+      return;
+    }
+
+    time--;
+    const t=document.getElementById("timer");
+    t.textContent="残り："+time;
+
+    if(time<=10) t.classList.add("danger");
+
+    if(time<=0){
+      alert("時間切れ！プレイヤー"+currentPlayer+"の負け");
+      clearInterval(timer);
+    }
+  },1000);
+}
+
+function resetTimer(){
+  clearInterval(timer);
+  time=60;
+  document.getElementById("timer").classList.remove("danger");
+  startTimer();
+}
+
+init();
+</script>
+
+</body>
+</html><!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<title>しりとりボード</title>
+
+<style>
+body {
+  margin:0;
+  font-family:sans-serif;
+  text-align:center;
+  background: linear-gradient(135deg,#1e1e2f,#121212);
+  color:white;
+}
+
+#board {
+  display:grid;
+  grid-template-columns:repeat(6,60px);
+  gap:6px;
+  justify-content:center;
+  margin:20px auto;
+  padding:10px;
+  border-radius:12px;
+  background:rgba(255,255,255,0.05);
+  box-shadow:0 0 20px rgba(0,0,0,0.5);
+}
+
+.cell {
+  width:60px;height:60px;
+  background:#2a2a3d;
+  border-radius:8px;
+  border:1px solid #444;
+  font-size:24px;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  cursor:pointer;
+  transition:0.2s;
+}
+
+.cell:hover { transform:scale(1.1); }
+.selected {
+  background:#42a5f5;
+  box-shadow:0 0 10px #42a5f5;
+}
+
+@keyframes pop {
+  0%{transform:scale(0);}
+  80%{transform:scale(1.2);}
+  100%{transform:scale(1);}
+}
+.filled { animation:pop 0.2s; }
+
+#timer { font-size:24px; }
+.danger { color:red; animation:blink 1s infinite; }
+@keyframes blink { 50%{opacity:0.3;} }
+
+#judge { display:none; margin-top:10px; }
 button { padding:6px 12px; margin:3px; cursor:pointer; }
 input { padding:6px; }
 </style>
