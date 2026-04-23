@@ -2,40 +2,67 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
-<title>しりとりボード完全版</title>
-
-<!-- kuromoji -->
-<script src="https://unpkg.com/kuromoji@0.1.2/build/kuromoji.js"></script>
+<title>しりとりボード</title>
 
 <style>
-body { font-family: sans-serif; text-align:center; background:#f5f5f5; }
+body {
+  margin:0;
+  font-family:sans-serif;
+  text-align:center;
+  background: linear-gradient(135deg,#1e1e2f,#121212);
+  color:white;
+}
 
-h1 { margin-top:10px; }
+h1 { margin:10px; }
 
 #board {
   display:grid;
   grid-template-columns:repeat(6,60px);
   gap:6px;
   justify-content:center;
-  margin:20px;
+  margin:20px auto;
+  padding:10px;
+  border-radius:12px;
+  background:rgba(255,255,255,0.05);
+  box-shadow:0 0 20px rgba(0,0,0,0.5);
 }
 
 .cell {
   width:60px;height:60px;
-  border:1px solid #333;
+  background:#2a2a3d;
+  border-radius:8px;
+  border:1px solid #444;
   font-size:24px;
   display:flex;
   align-items:center;
   justify-content:center;
-  background:white;
   cursor:pointer;
   transition:0.2s;
 }
 
-.cell:hover { background:#eee; }
-.selected { background:#90caf9 !important; }
+.cell:hover {
+  transform:scale(1.1);
+  background:#3a3a5a;
+}
 
-#panel { margin-top:10px; }
+.selected {
+  background:#42a5f5 !important;
+  box-shadow:0 0 10px #42a5f5;
+}
+
+@keyframes pop {
+  0%{transform:scale(0);}
+  80%{transform:scale(1.2);}
+  100%{transform:scale(1);}
+}
+
+.filled {
+  animation:pop 0.2s ease;
+}
+
+#panel {
+  margin-top:10px;
+}
 
 input {
   padding:8px;
@@ -47,11 +74,28 @@ button {
   padding:8px 16px;
   font-size:16px;
   cursor:pointer;
+  border:none;
+  border-radius:6px;
 }
 
-#turn { font-weight:bold; }
-#timer { color:red; }
+#timer {
+  font-size:24px;
+  font-weight:bold;
+}
 
+.danger {
+  color:red;
+  animation:blink 1s infinite;
+}
+
+@keyframes blink {
+  50%{opacity:0.3;}
+}
+
+#judge {
+  margin-top:10px;
+  display:none;
+}
 </style>
 </head>
 <body>
@@ -65,8 +109,15 @@ button {
   <button onclick="submitWord()">決定</button>
 </div>
 
+<div id="judge">
+  <button onclick="approve()">OK</button>
+  <button onclick="reject()">NG</button>
+</div>
+
 <p id="turn"></p>
 <p id="timer"></p>
+
+<audio id="clickSound" src="https://assets.mixkit.co/active_storage/sfx/2568/2568-preview.mp3"></audio>
 
 <script>
 const SIZE=6;
@@ -75,23 +126,10 @@ let currentPlayer=1;
 let lastChar="";
 let lastPos=null;
 let time=60,timer;
-let tokenizer;
 let usedWords=[];
+let pendingWord="";
 
-// ====== kuromoji初期化 ======
-function initTokenizer(){
-  return new Promise((resolve,reject)=>{
-    kuromoji.builder({
-      dicPath:"https://unpkg.com/kuromoji@0.1.2/dict/"
-    }).build((err,t)=>{
-      if(err) reject(err);
-      tokenizer=t;
-      resolve();
-    });
-  });
-}
-
-// ====== 初期化 ======
+// ===== 初期化 =====
 function init(){
   const b=document.getElementById("board");
   b.innerHTML="";
@@ -108,7 +146,6 @@ function init(){
     }
   }
 
-  // 中央
   ["あ","い","う","え"].forEach((ch,i)=>{
     let x=2+(i%2), y=2+Math.floor(i/2);
     setCell(x,y,ch);
@@ -118,22 +155,21 @@ function init(){
   resetTimer();
 }
 
-// ====== ユーティリティ ======
 function getCell(x,y){
   return document.getElementsByClassName("cell")[y*SIZE+x];
 }
+
 function setCell(x,y,c){
   board[y][x]=c;
-  getCell(x,y).textContent=c;
+  const el=getCell(x,y);
+  el.textContent=c;
+  el.classList.add("filled");
 }
 
-function normalizeKana(c){
-  const map={"ャ":"ヤ","ュ":"ユ","ョ":"ヨ","ッ":"ツ","ー":""};
-  return map[c]||c;
-}
-
-// ====== クリック ======
+// ===== クリック =====
 function clickCell(x,y){
+
+  document.getElementById("clickSound").play();
 
   if(selected.length===0){
     if(lastPos){
@@ -156,56 +192,22 @@ function clickCell(x,y){
   getCell(x,y).classList.add("selected");
 }
 
-// ====== 辞書チェック ======
-function checkWord(word){
-
-  const tokens=tokenizer.tokenize(word);
-
-  // 名詞限定（固有名詞もOK）
-  if(!tokens.every(t=>t.pos==="名詞")){
-    alert("名詞のみ！");
-    return null;
-  }
-
-  const reading=tokens.map(t=>t.reading||"").join("");
-  if(!reading){
-    alert("読み取得失敗");
-    return null;
-  }
-
-  let last=normalizeKana(reading.slice(-1));
-
-  return {reading,last};
-}
-
-// ====== 提出 ======
+// ===== 提出 =====
 function submitWord(){
 
   const input=document.getElementById("wordInput").value.trim();
   if(input.length<2){ alert("2文字以上"); return; }
 
-  const res=checkWord(input);
-  if(!res) return;
-
-  // 重複禁止
   if(usedWords.includes(input)){
-    alert("その単語は使用済み");
+    alert("使用済み");
     return;
   }
 
-  // しりとり
-  if(lastChar && normalizeKana(res.reading[0])!==lastChar){
+  if(lastChar && input[0]!==lastChar){
     alert("しりとりになってない");
     return;
   }
 
-  // ん負け
-  if(res.last==="ン"){
-    alert("『ん』で負け！");
-    return;
-  }
-
-  // 盤面一致
   const pathStr=selected.map(p=>board[p.y][p.x]||"").join("");
   for(let i=0;i<pathStr.length;i++){
     if(pathStr[i] && pathStr[i]!==input[i]){
@@ -214,13 +216,19 @@ function submitWord(){
     }
   }
 
-  // 新規マス
   if(selected.every(p=>board[p.y][p.x]!=="")){
     alert("新規マス必要！");
     return;
   }
 
-  // 反映
+  pendingWord=input;
+  document.getElementById("judge").style.display="block";
+}
+
+// ===== OK =====
+function approve(){
+  const input=pendingWord;
+
   selected.forEach((p,i)=>{
     if(!board[p.y][p.x]){
       setCell(p.x,p.y,input[i]);
@@ -228,13 +236,21 @@ function submitWord(){
   });
 
   usedWords.push(input);
-  lastChar=res.last;
+  lastChar=input[input.length-1];
   lastPos=selected[selected.length-1];
+
+  document.getElementById("judge").style.display="none";
 
   nextTurn();
 }
 
-// ====== ターン ======
+// ===== NG =====
+function reject(){
+  alert("NG！負け！");
+  document.getElementById("judge").style.display="none";
+}
+
+// ===== ターン =====
 function nextTurn(){
   selected.forEach(p=>getCell(p.x,p.y).classList.remove("selected"));
   selected=[];
@@ -248,11 +264,17 @@ function updateTurn(){
     "プレイヤー"+currentPlayer+"のターン";
 }
 
-// ====== タイマー ======
+// ===== タイマー =====
 function startTimer(){
   timer=setInterval(()=>{
     time--;
-    document.getElementById("timer").textContent="残り："+time;
+    const t=document.getElementById("timer");
+    t.textContent="残り："+time;
+
+    if(time<=10){
+      t.classList.add("danger");
+    }
+
     if(time<=0){
       alert("時間切れ！プレイヤー"+currentPlayer+"の負け");
       clearInterval(timer);
@@ -263,17 +285,11 @@ function startTimer(){
 function resetTimer(){
   clearInterval(timer);
   time=60;
+  document.getElementById("timer").classList.remove("danger");
   startTimer();
 }
 
-// ====== 起動 ======
-async function start(){
-  document.getElementById("turn").textContent="辞書ロード中...";
-  await initTokenizer();
-  init();
-}
-
-start();
+init();
 </script>
 
 </body>
